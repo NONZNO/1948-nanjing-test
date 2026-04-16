@@ -35,8 +35,8 @@ function CoverPage({ onStartQuiz }) {
         <div className="flex-1 h-px bg-gradient-to-l from-transparent via-[#A39E93] to-transparent"></div>
       </div>
 
-      {/* 副标题 */}
-      <p className="text-center text-sm md:text-base text-[#2C2825]/80 leading-loose mb-10 tracking-wide text-justify px-2">
+      {/* 副标题 — 水平居中，仅保留text-center */}
+      <p className="text-center text-sm md:text-base text-[#2C2825]/80 leading-loose mb-10 tracking-wide">
         若回到民国三十七年的金陵
         <br />
         你会成为哪一类青年？

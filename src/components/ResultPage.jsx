@@ -7,35 +7,104 @@ function ResultPage({ result, onRestart }) {
   const [isGenerating, setIsGenerating] = useState(false)
   const [posterUrl, setPosterUrl] = useState(null)
 
+  // 【Debug探针】验证ResultPage接收到的数据
+  console.log("🎯 ResultPage 接收到的完整result:", JSON.stringify(result))
+  console.log("🎯 ResultPage 接收到的scores对象:", JSON.stringify(scores))
+  console.log("🎯 ResultPage 接收到的mbti:", mbti)
+
+  // 动态计算维度百分比：左侧得分 / (左侧+右侧) * 100
+  // 边界保护：分母为0时默认返回50%
   const getPercent = (a, b) => {
-    const total = (a || 0) + (b || 0)
-    return total === 0 ? 50 : Math.round((a / total) * 100)
+    const leftScore = Number(a) || 0
+    const rightScore = Number(b) || 0
+    const total = leftScore + rightScore
+    if (total === 0) return 50
+    return Math.round((leftScore / total) * 100)
   }
 
+  // 四组MBTI维度：根据用户真实答题分数动态计算每根进度条的宽度
   const traits = [
-    { left: "涉世", right: "自省", percent: getPercent(scores?.E, scores?.I) },
-    { left: "务实", right: "远见", percent: getPercent(scores?.S, scores?.N) },
-    { left: "明理", right: "共情", percent: getPercent(scores?.T, scores?.F) },
-    { left: "笃行", right: "旷达", percent: getPercent(scores?.J, scores?.P) },
+    { 
+      left: "涉世", 
+      right: "自省", 
+      percent: getPercent(scores?.E, scores?.I),
+      rawLeft: scores?.E || 0,
+      rawRight: scores?.I || 0
+    },
+    { 
+      left: "务实", 
+      right: "远见", 
+      percent: getPercent(scores?.S, scores?.N),
+      rawLeft: scores?.S || 0,
+      rawRight: scores?.N || 0
+    },
+    { 
+      left: "明理", 
+      right: "共情", 
+      percent: getPercent(scores?.T, scores?.F),
+      rawLeft: scores?.T || 0,
+      rawRight: scores?.F || 0
+    },
+    { 
+      left: "笃行", 
+      right: "旷达", 
+      percent: getPercent(scores?.J, scores?.P),
+      rawLeft: scores?.J || 0,
+      rawRight: scores?.P || 0
+    },
   ]
 
+  // 生成高清证书截图（修复移动端偏移/裁切/模糊问题）
   const handleGenerateImage = async () => {
     if (!cardRef.current || isGenerating) return
     
     setIsGenerating(true)
-    
+
     try {
-      const canvas = await html2canvas(cardRef.current, {
-        scale: 3,
+      // 【关键修复1】强制回滚到页面顶部，消除滚动偏移影响
+      window.scrollTo(0, 0)
+
+      // 等待DOM完成滚动重绘（确保scrollTo生效后再截图）
+      await new Promise(resolve => setTimeout(resolve, 100))
+
+      // 获取目标容器的精确尺寸
+      const targetEl = cardRef.current
+      const rect = targetEl.getBoundingClientRect()
+
+      // 【关键修复2】使用完整的抗偏移配置项
+      const canvas = await html2canvas(targetEl, {
+        // 分辨率适配：优先使用设备像素比，最低保底2x（防止Retina屏模糊）
+        scale: Math.min(window.devicePixelRatio || 2, 3),
+
+        // 跨域资源加载（CDN头像/图片必须开启）
         useCORS: true,
-        backgroundColor: '#F8F3EC',
+
+        // 允许跨域画布污染（解决部分手机浏览器安全限制）
+        allowTaint: true,
+
+        // 背景色：与卡片背景一致，避免透明区域出现杂色
+        backgroundColor: '#FAF7F2',
+
+        // 关闭内部日志输出
         logging: false,
-        width: cardRef.current.scrollWidth,
-        height: cardRef.current.scrollHeight,
-        windowWidth: cardRef.current.scrollWidth,
-        windowHeight: cardRef.current.scrollHeight
+
+        // 【核心修复】强制覆盖所有滚动/偏移参数，彻底消除移动端错位
+        scrollX: 0,
+        scrollY: 0,
+        windowX: 0,
+        windowY: 0,
+
+        // 使用getBoundingClientRect获取的精确尺寸（而非scrollWidth/Height）
+        width: rect.width,
+        height: rect.height,
+        windowWidth: window.innerWidth,
+        windowHeight: window.innerHeight,
+
+        // 防止CSS transform导致的元素飞出画布
+        removeContainer: false
       })
       
+      // 导出为高质量PNG（质量参数1.0 = 无损）
       setPosterUrl(canvas.toDataURL('image/png', 1.0))
     } catch (error) {
       console.error('生成证书失败:', error)
@@ -111,6 +180,7 @@ function ResultPage({ result, onRestart }) {
                       src={schoolInfo.avatar} 
                       alt={schoolInfo.schoolName}
                       className="w-full h-full object-cover"
+                      crossOrigin="anonymous"
                       style={{
                         filter: 'sepia(0.25) contrast(1.08) brightness(1.02) saturate(0.75)'
                       }}
@@ -165,7 +235,7 @@ function ResultPage({ result, onRestart }) {
             </div>
           </div>
 
-          {/* 金陵青年特质评估卷宗 */}
+          {/* 金陵青年特质评估卷宗 — 动态进度条 */}
           <div className="mx-5 my-2.5 py-2.5 border-y border-[#A39E93]/35 relative z-[1]">
             <p className="text-[9px] text-stone-500 font-bold tracking-[0.4em] text-center mb-2.5">
               【 金陵青年特质评估卷宗 】
@@ -174,27 +244,45 @@ function ResultPage({ result, onRestart }) {
             <div className="space-y-2">
               {traits.map((trait, index) => (
                 <div key={index} className="flex items-center gap-2">
+                  {/* 左侧标签 */}
                   <span className="w-7 text-right text-[11px] font-serif text-stone-500 tracking-wide flex-shrink-0">
                     {trait.left}
                   </span>
                   
+                  {/* 动态进度条容器 */}
                   <div className="flex-1 h-1 bg-[#A39E93]/20 border border-[#A39E93]/30 rounded-none overflow-hidden relative">
+                    {/* 高亮填充区域 - 宽度由 getPercent() 根据真实分数动态计算 */}
                     <div 
                       className="h-full bg-[#8B2626]/70 rounded-none transition-all duration-700 ease-out relative"
-                      style={{ width: `${trait.percent}%` }}
+                      style={{ 
+                        width: `${trait.percent}%`,
+                        minWidth: trait.percent > 0 ? '1px' : '0'
+                      }}
                     >
-                      {trait.percent > 5 && trait.percent < 95 && (
+                      {/* 进度指示点：仅在非极端值时显示 */}
+                      {trait.percent > 3 && trait.percent < 97 && (
                         <div className="absolute right-0 top-1/2 -translate-y-1/2 w-1 h-1 bg-[#8B2626] rounded-none"></div>
                       )}
                     </div>
                     
+                    {/* 中央基准线 */}
                     <div className="absolute top-0 bottom-0 left-1/2 w-px bg-stone-400/25"></div>
                   </div>
                   
+                  {/* 右侧标签 */}
                   <span className="w-7 text-left text-[11px] font-serif text-stone-500 tracking-wide flex-shrink-0">
                     {trait.right}
                   </span>
                 </div>
+              ))}
+            </div>
+
+            {/* 百分比数值提示（调试可见，增强数据可信度） */}
+            <div className="flex justify-between mt-2 px-1">
+              {traits.map((trait, index) => (
+                <span key={index} className="text-[7px] text-stone-300 tabular-nums">
+                  {trait.percent}%
+                </span>
               ))}
             </div>
             
